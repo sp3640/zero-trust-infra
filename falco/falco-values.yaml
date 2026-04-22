@@ -11,7 +11,7 @@ falcosidekick:
   enabled: true
   config:
     slack:
-      webhookurl: "https://hooks.slack.com/services/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"          # <-- paste your Slack webhook URL here
+      webhookurl: ""          # <-- paste your Slack webhook URL here
       minimumpriority: warning
       messageformat: >
         *[{{.Priority}}]* {{.Rule}} | Pod: `{{.OutputFields.container_name}}`
