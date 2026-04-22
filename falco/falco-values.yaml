@@ -1,0 +1,31 @@
+falco:
+  grpc:
+    enabled: true
+  grpcOutput:
+    enabled: true
+
+customRules:
+  {}
+
+falcosidekick:
+  enabled: true
+  config:
+    slack:
+      webhookurl: ""          # <-- paste your Slack webhook URL here
+      minimumpriority: warning
+      messageformat: >
+        *[{{.Priority}}]* {{.Rule}} | Pod: `{{.OutputFields.container_name}}`
+        | Image: `{{.OutputFields.container_image_repository}}`
+    
+    # Uncomment to also alert to PagerDuty
+    # pagerduty:
+    #   routingkey: ""
+    #   minimumpriority: critical
+
+  webui:
+    enabled: true             # Falcosidekick UI at localhost:2802
+
+tolerations:
+  - effect: NoSchedule
+    key: node-role.kubernetes.io/control-plane
+    operator: Exists

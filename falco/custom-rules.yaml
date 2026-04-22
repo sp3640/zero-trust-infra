@@ -1,0 +1,99 @@
+customRules:
+  zero-trust-rules.yaml: |-
+
+    # ── Rule 1: Shell spawned inside any container ────────────────────────
+    - rule: Shell spawned in container
+      desc: >
+        Detects when a shell process (bash, sh, zsh) is spawned inside a
+        running container. Legitimate FastAPI apps never need a shell.
+        This is a common indicator of a container escape or RCE attempt.
+      condition: >
+        spawned_process
+        and container
+        and container.name != ""
+        and proc.name in (shell_binaries)
+        and not proc.pname in (shell_binaries)
+      output: >
+        Shell spawned in container
+        (user=%user.name user_uid=%user.uid container=%container.name
+         image=%container.image.repository:%container.image.tag
+         shell=%proc.name parent=%proc.pname cmdline=%proc.cmdline)
+      priority: CRITICAL
+      tags: [container, shell, mitre_execution]
+
+    # ── Rule 2: Unexpected write to sensitive paths ───────────────────────
+    - rule: Write to sensitive path in container
+      desc: >
+        Detects file writes to sensitive paths (/etc, /bin, /usr/bin, /sbin).
+        Our FastAPI app only writes to /tmp. Any write elsewhere is suspicious.
+      condition: >
+        open_write
+        and container
+        and fd.name startswith /etc
+        or (open_write and container and fd.name startswith /bin)
+        or (open_write and container and fd.name startswith /usr/bin)
+        or (open_write and container and fd.name startswith /sbin)
+      output: >
+        Sensitive path write attempt
+        (user=%user.name container=%container.name
+         image=%container.image.repository:%container.image.tag
+         file=%fd.name proc=%proc.name cmdline=%proc.cmdline)
+      priority: ERROR
+      tags: [container, filesystem, mitre_persistence]
+
+    # ── Rule 3: Unexpected outbound network connection ────────────────────
+    - rule: Unexpected outbound connection from app container
+      desc: >
+        Detects outbound TCP connections from app containers to unexpected
+        destinations. FastAPI only needs to accept inbound traffic.
+        Outbound to unknown IPs may indicate C2 communication or data exfil.
+      condition: >
+        outbound
+        and container
+        and container.image.repository contains "zero-trust-app"
+        and not fd.sport in (80, 443, 8080)
+        and not fd.sip in ("127.0.0.1", "::1")
+      output: >
+        Unexpected outbound connection
+        (user=%user.name container=%container.name
+         image=%container.image.repository:%container.image.tag
+         connection=%fd.name proto=%fd.l4proto)
+      priority: WARNING
+      tags: [container, network, mitre_exfiltration]
+
+    # ── Rule 4: /etc/passwd or /etc/shadow read ───────────────────────────
+    - rule: Sensitive file read in container
+      desc: >
+        Detects reads of /etc/passwd, /etc/shadow, or /etc/hosts inside
+        a container. These reads are often the first step of privilege
+        escalation or lateral movement.
+      condition: >
+        open_read
+        and container
+        and fd.name in (/etc/passwd, /etc/shadow, /etc/sudoers, /etc/hosts)
+        and not proc.name in (python3, python)
+      output: >
+        Sensitive file read attempt
+        (user=%user.name container=%container.name
+         image=%container.image.repository:%container.image.tag
+         file=%fd.name proc=%proc.name)
+      priority: WARNING
+      tags: [container, filesystem, mitre_credential_access]
+
+    # ── Rule 5: Package manager run inside container ──────────────────────
+    - rule: Package manager run in container
+      desc: >
+        Detects execution of apt, pip, yum, apk inside a running container.
+        Legitimate containers are immutable — no packages should be installed
+        at runtime. This is a strong indicator of an attacker installing tools.
+      condition: >
+        spawned_process
+        and container
+        and proc.name in (apt, apt-get, pip, pip3, yum, apk, dnf, curl, wget)
+      output: >
+        Package manager / download tool run in container
+        (user=%user.name container=%container.name
+         image=%container.image.repository:%container.image.tag
+         proc=%proc.name cmdline=%proc.cmdline)
+      priority: ERROR
+      tags: [container, process, mitre_persistence]

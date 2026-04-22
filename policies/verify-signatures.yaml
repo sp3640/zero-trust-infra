@@ -1,0 +1,75 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8simageverification
+  annotations:
+    description: >
+      Blocks pods from running images that are not signed with Cosign.
+      Works alongside the Kyverno or Connaisseur admission webhook for
+      full cryptographic verification. This policy enforces the naming
+      convention and registry restriction as a first gate.
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sImageVerification
+      validation:
+        openAPIV3Schema:
+          properties:
+            allowedRegistries:
+              type: array
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8simageverification
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not allowed_registry(container.image)
+          msg := sprintf(
+            "Container '%v' uses image '%v' from an untrusted registry. Allowed: %v",
+            [container.name, container.image, input.parameters.allowedRegistries]
+          )
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          uses_latest_tag(container.image)
+          msg := sprintf(
+            "Container '%v' uses 'latest' tag. Pin to a specific SHA or version tag.",
+            [container.name]
+          )
+        }
+
+        allowed_registry(image) {
+          registry := input.parameters.allowedRegistries[_]
+          startswith(image, registry)
+        }
+
+        uses_latest_tag(image) {
+          endswith(image, ":latest")
+        }
+
+        uses_latest_tag(image) {
+          not contains(image, ":")
+        }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sImageVerification
+metadata:
+  name: verify-image-registry
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+      - gatekeeper-system
+      - argocd
+      - falco
+  parameters:
+    allowedRegistries:
+      - "ghcr.io/sp3640/"
