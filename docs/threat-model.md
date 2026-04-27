@@ -99,4 +99,4 @@ Result: Attacker gets 0 persistence, every step is logged, security team is aler
 - **Network policies** — add Cilium or Calico NetworkPolicy resources
 - **RBAC hardening** — restrict ServiceAccount permissions per workload
 
-These are natural extensions to propose when discussing this project in interviews.
+
